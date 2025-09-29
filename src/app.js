@@ -39,13 +39,17 @@ export class EnergyLifeSimulation {
     this.frameCount = 0;
     this.lastTime = performance.now();
 
-    this.readbackBuffer = null;
     this.interactionTexture = null;
     this.interactionMode = 'energy';
     this.isMouseDown = false;
     this.mousePos = { x: 0, y: 0 };
 
     this.chartHistory = [];
+    this.downsamplePasses = [];
+    this.downsampleScene = null;
+    this.downsampleCamera = null;
+    this.downsampleMesh = null;
+    this.averageBuffer = null;
     this.chartCtx = null;
 
     this.canvasWidth = INITIAL_CANVAS_WIDTH;
@@ -83,21 +87,8 @@ export class EnergyLifeSimulation {
       const currentRenderTarget = this.computeRenderer.getCurrentRenderTarget(
         this.computeVariables.field,
       );
-      this.renderer.readRenderTargetPixels(
-        currentRenderTarget,
-        0,
-        0,
-        SIMULATION_SIZE,
-        SIMULATION_SIZE,
-        this.readbackBuffer,
-      );
 
-      let sum = 0;
-      const count = SIMULATION_SIZE * SIMULATION_SIZE;
-      for (let i = 0; i < this.readbackBuffer.length; i += 4) {
-        sum += this.readbackBuffer[i];
-      }
-      const average = sum / count;
+      const average = this.#computeAverage(currentRenderTarget.texture);
       this.computeVariables.field.material.uniforms.globalAverage.value =
         average;
       this.#updateAverageEnergy(average);
@@ -141,10 +132,6 @@ export class EnergyLifeSimulation {
       preserveDrawingBuffer: true,
     });
     this.renderer.setSize(this.canvasWidth, this.canvasHeight);
-
-    this.readbackBuffer = new Float32Array(
-      SIMULATION_SIZE * SIMULATION_SIZE * 4,
-    );
   }
 
   #initComputeRenderer() {
@@ -493,6 +480,106 @@ export class EnergyLifeSimulation {
     const rect = this.dom.canvas.getBoundingClientRect();
     this.mousePos.x = (event.clientX - rect.left) / rect.width;
     this.mousePos.y = 1.0 - (event.clientY - rect.top) / rect.height;
+  }
+
+  #computeAverage(fieldTexture) {
+    this.#ensureDownsamplePipeline();
+
+    let currentTexture = fieldTexture;
+    for (const pass of this.downsamplePasses) {
+      pass.material.uniforms.inputTexture.value = currentTexture;
+      pass.material.uniforms.texelSize.value.set(
+        1 / pass.inputSize,
+        1 / pass.inputSize,
+      );
+      this.downsampleMesh.material = pass.material;
+      this.renderer.setRenderTarget(pass.renderTarget);
+      this.renderer.render(this.downsampleScene, this.downsampleCamera);
+      currentTexture = pass.renderTarget.texture;
+    }
+
+    const lastPass = this.downsamplePasses[this.downsamplePasses.length - 1];
+    this.renderer.setRenderTarget(null);
+    this.renderer.readRenderTargetPixels(
+      lastPass.renderTarget,
+      0,
+      0,
+      1,
+      1,
+      this.averageBuffer,
+    );
+
+    return this.averageBuffer[0];
+  }
+
+  #ensureDownsamplePipeline() {
+    if (this.downsamplePasses.length > 0) {
+      return;
+    }
+
+    this.downsampleScene = new THREE.Scene();
+    this.downsampleCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    this.downsampleMesh = new THREE.Mesh(
+      geometry,
+      new THREE.MeshBasicMaterial(),
+    );
+    this.downsampleScene.add(this.downsampleMesh);
+
+    let size = SIMULATION_SIZE;
+    while (size > 1) {
+      const outputSize = Math.max(1, size >> 1);
+      const renderTarget = new THREE.WebGLRenderTarget(outputSize, outputSize, {
+        minFilter: THREE.NearestFilter,
+        magFilter: THREE.NearestFilter,
+        format: THREE.RGBAFormat,
+        type: THREE.FloatType,
+      });
+      renderTarget.texture.wrapS = THREE.ClampToEdgeWrapping;
+      renderTarget.texture.wrapT = THREE.ClampToEdgeWrapping;
+
+      const material = new THREE.ShaderMaterial({
+        uniforms: {
+          inputTexture: { value: null },
+          texelSize: { value: new THREE.Vector2(1 / size, 1 / size) },
+        },
+        vertexShader: `
+                    void main() {
+                        gl_Position = vec4(position, 1.0);
+                    }
+                `,
+        fragmentShader: `
+                    uniform sampler2D inputTexture;
+                    uniform vec2 texelSize;
+                    void main() {
+                        vec2 coord = gl_FragCoord.xy - vec2(0.5);
+                        vec2 base = coord * 2.0;
+                        vec2 uv00 = (base + vec2(0.5, 0.5)) * texelSize;
+                        vec2 uv10 = (base + vec2(1.5, 0.5)) * texelSize;
+                        vec2 uv01 = (base + vec2(0.5, 1.5)) * texelSize;
+                        vec2 uv11 = (base + vec2(1.5, 1.5)) * texelSize;
+                        float sum = (
+                            texture2D(inputTexture, uv00).x +
+                            texture2D(inputTexture, uv10).x +
+                            texture2D(inputTexture, uv01).x +
+                            texture2D(inputTexture, uv11).x
+                        ) * 0.25;
+                        gl_FragColor = vec4(sum, 0.0, 0.0, 1.0);
+                    }
+                `,
+      });
+
+      this.downsamplePasses.push({
+        inputSize: size,
+        outputSize,
+        renderTarget,
+        material,
+      });
+
+      size = outputSize;
+    }
+
+    this.averageBuffer = new Float32Array(4);
   }
 
   #updateInteractionTexture() {
