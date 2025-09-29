@@ -1,0 +1,1398 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Advanced Energy Life Simulation</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        background: #000;
+        color: #fff;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        overflow: hidden;
+        user-select: none;
+      }
+
+      #canvasContainer {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        cursor: crosshair;
+      }
+
+      #canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+
+      .resize-handle {
+        position: absolute;
+        background: rgba(0, 255, 204, 0.5);
+      }
+
+      .resize-handle:hover {
+        background: rgba(0, 255, 204, 0.8);
+      }
+
+      .resize-handle.right {
+        right: -5px;
+        top: 0;
+        width: 10px;
+        height: 100%;
+        cursor: ew-resize;
+      }
+
+      .resize-handle.bottom {
+        bottom: -5px;
+        left: 0;
+        width: 100%;
+        height: 10px;
+        cursor: ns-resize;
+      }
+
+      .resize-handle.corner {
+        right: -5px;
+        bottom: -5px;
+        width: 15px;
+        height: 15px;
+        cursor: nwse-resize;
+        border-radius: 0 0 3px 0;
+      }
+
+      #controls {
+        position: fixed;
+        top: 10px;
+        left: 10px;
+        background: rgba(0, 0, 0, 0.9);
+        backdrop-filter: blur(10px);
+        border-radius: 8px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        width: 360px;
+        max-height: calc(100vh - 20px);
+        overflow-y: auto;
+        transition: transform 0.3s ease;
+        z-index: 1000;
+      }
+
+      #controls.collapsed {
+        transform: translateX(-320px);
+      }
+
+      .toggle-button {
+        position: absolute;
+        right: -30px;
+        top: 10px;
+        width: 30px;
+        height: 40px;
+        background: rgba(0, 0, 0, 0.9);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-left: none;
+        border-radius: 0 5px 5px 0;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #00ffcc;
+      }
+
+      .controls-header {
+        padding: 15px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .controls-header h2 {
+        margin: 0;
+        font-size: 1.1em;
+        background: linear-gradient(45deg, #00ffcc, #ff00ff);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .preset-buttons {
+        display: flex;
+        gap: 5px;
+      }
+
+      .preset-btn {
+        padding: 5px 10px;
+        background: rgba(0, 255, 204, 0.2);
+        border: 1px solid rgba(0, 255, 204, 0.5);
+        border-radius: 3px;
+        color: #00ffcc;
+        cursor: pointer;
+        font-size: 0.8em;
+      }
+
+      .preset-btn:hover {
+        background: rgba(0, 255, 204, 0.3);
+      }
+
+      .control-group {
+        padding: 15px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      }
+
+      .control-group h3 {
+        margin-bottom: 10px;
+        font-size: 0.9em;
+        color: #66ff99;
+      }
+
+      .control-item {
+        margin-bottom: 10px;
+      }
+
+      .control-item label {
+        display: block;
+        margin-bottom: 3px;
+        font-size: 0.8em;
+        color: rgba(255, 255, 255, 0.7);
+      }
+
+      .slider-container {
+        display: flex;
+        gap: 5px;
+        align-items: center;
+      }
+
+      .slider-container input[type="range"] {
+        flex: 1;
+      }
+
+      .slider-container input[type="number"] {
+        width: 70px;
+        padding: 2px 5px;
+        background: rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        color: #00ffcc;
+        border-radius: 3px;
+        font-size: 0.8em;
+      }
+
+      #chart {
+        position: fixed;
+        bottom: 10px;
+        right: 10px;
+        width: 300px;
+        height: 150px;
+        background: rgba(0, 0, 0, 0.9);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 5px;
+        padding: 10px;
+      }
+
+      #chartCanvas {
+        width: 100%;
+        height: 100%;
+      }
+
+      #info {
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        background: rgba(0, 0, 0, 0.9);
+        padding: 10px 15px;
+        border-radius: 5px;
+        font-size: 0.85em;
+        color: #00ffcc;
+        display: flex;
+        gap: 15px;
+        align-items: center;
+      }
+
+      .speed-controls {
+        display: flex;
+        gap: 5px;
+        align-items: center;
+      }
+
+      .speed-btn {
+        padding: 3px 8px;
+        background: rgba(0, 255, 204, 0.2);
+        border: 1px solid rgba(0, 255, 204, 0.5);
+        border-radius: 3px;
+        color: #00ffcc;
+        cursor: pointer;
+        font-size: 0.8em;
+      }
+
+      .speed-btn.active {
+        background: rgba(0, 255, 204, 0.5);
+      }
+
+      .interaction-mode {
+        position: fixed;
+        bottom: 10px;
+        left: 10px;
+        background: rgba(0, 0, 0, 0.9);
+        padding: 10px;
+        border-radius: 5px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .mode-btn {
+        padding: 5px 10px;
+        margin: 0 2px;
+        background: rgba(0, 255, 204, 0.2);
+        border: 1px solid rgba(0, 255, 204, 0.5);
+        border-radius: 3px;
+        color: #00ffcc;
+        cursor: pointer;
+        font-size: 0.8em;
+      }
+
+      .mode-btn.active {
+        background: rgba(0, 255, 204, 0.5);
+      }
+
+      @media (max-width: 768px) {
+        #controls {
+          width: 280px;
+          font-size: 0.9em;
+        }
+
+        #controls.collapsed {
+          transform: translateX(-250px);
+        }
+
+        #chart {
+          width: 200px;
+          height: 100px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="canvasContainer">
+      <canvas id="canvas"></canvas>
+      <div class="resize-handle right"></div>
+      <div class="resize-handle bottom"></div>
+      <div class="resize-handle corner"></div>
+    </div>
+
+    <div id="controls">
+      <div class="toggle-button" id="toggleControls">☰</div>
+
+      <div class="controls-header">
+        <h2>⚡ Energy Life</h2>
+        <div class="preset-buttons">
+          <button class="preset-btn" id="savePreset">Save</button>
+          <button class="preset-btn" id="loadPreset">Load</button>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <h3>Dynamic Tension</h3>
+
+        <div class="control-item">
+          <label for="innerRadius">Inner Radius</label>
+          <div class="slider-container">
+            <input
+              type="range"
+              id="innerRadius"
+              min="1"
+              max="10"
+              value="3.5"
+              step="0.01"
+            />
+            <input
+              type="number"
+              id="innerRadiusValue"
+              min="1"
+              max="10"
+              value="3.5"
+              step="0.01"
+            />
+          </div>
+        </div>
+
+        <div class="control-item">
+          <label for="innerStrength">Inner Strength</label>
+          <div class="slider-container">
+            <input
+              type="range"
+              id="innerStrength"
+              min="0"
+              max="2"
+              value="0.9"
+              step="0.01"
+            />
+            <input
+              type="number"
+              id="innerStrengthValue"
+              min="0"
+              max="2"
+              value="0.9"
+              step="0.01"
+            />
+          </div>
+        </div>
+
+        <div class="control-item">
+          <label for="outerRadius">Outer Radius</label>
+          <div class="slider-container">
+            <input
+              type="range"
+              id="outerRadius"
+              min="5"
+              max="15"
+              value="7.5"
+              step="0.01"
+            />
+            <input
+              type="number"
+              id="outerRadiusValue"
+              min="5"
+              max="15"
+              value="7.5"
+              step="0.01"
+            />
+          </div>
+        </div>
+
+        <div class="control-item">
+          <label for="outerStrength">Outer Strength</label>
+          <div class="slider-container">
+            <input
+              type="range"
+              id="outerStrength"
+              min="-2"
+              max="0"
+              value="-0.4"
+              step="0.01"
+            />
+            <input
+              type="number"
+              id="outerStrengthValue"
+              min="-2"
+              max="0"
+              value="-0.4"
+              step="0.01"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <h3>Energy Economy</h3>
+
+        <div class="control-item">
+          <label for="decayRate">Decay Rate</label>
+          <div class="slider-container">
+            <input
+              type="range"
+              id="decayRate"
+              min="0"
+              max="1"
+              value="0.378"
+              step="0.0001"
+            />
+            <input
+              type="number"
+              id="decayRateValue"
+              min="0"
+              max="1"
+              value="0.378"
+              step="0.0001"
+            />
+          </div>
+        </div>
+
+        <div class="control-item">
+          <label for="diffusionRate">Diffusion Rate</label>
+          <div class="slider-container">
+            <input
+              type="range"
+              id="diffusionRate"
+              min="0"
+              max="1"
+              value="0.333"
+              step="0.0001"
+            />
+            <input
+              type="number"
+              id="diffusionRateValue"
+              min="0"
+              max="1"
+              value="0.333"
+              step="0.0001"
+            />
+          </div>
+        </div>
+
+        <div class="control-item">
+          <label for="fissionThreshold">Fission Threshold</label>
+          <div class="slider-container">
+            <input
+              type="range"
+              id="fissionThreshold"
+              min="0.5"
+              max="0.95"
+              value="0.796"
+              step="0.01"
+            />
+            <input
+              type="number"
+              id="fissionThresholdValue"
+              min="0.5"
+              max="0.95"
+              value="0.796"
+              step="0.01"
+            />
+          </div>
+        </div>
+      </div>
+
+      <div class="control-group">
+        <h3>Growth Function</h3>
+
+        <div class="control-item">
+          <label for="growthCenter">Growth Center</label>
+          <div class="slider-container">
+            <input
+              type="range"
+              id="growthCenter"
+              min="-2"
+              max="2"
+              value="-0.170"
+              step="0.0001"
+            />
+            <input
+              type="number"
+              id="growthCenterValue"
+              min="-2"
+              max="2"
+              value="-0.170"
+              step="0.0001"
+            />
+          </div>
+        </div>
+
+        <div class="control-item">
+          <label for="growthWidth">Growth Width</label>
+          <div class="slider-container">
+            <input
+              type="range"
+              id="growthWidth"
+              min="0.0001"
+              max="1"
+              value="0.0183"
+              step="0.0001"
+            />
+            <input
+              type="number"
+              id="growthWidthValue"
+              min="0.0001"
+              max="1"
+              value="0.0183"
+              step="0.0001"
+            />
+          </div>
+        </div>
+
+        <div class="control-item">
+          <label for="growthRate">Growth Rate</label>
+          <div class="slider-container">
+            <input
+              type="range"
+              id="growthRate"
+              min="0.001"
+              max="1"
+              value="0.607"
+              step="0.001"
+            />
+            <input
+              type="number"
+              id="growthRateValue"
+              min="0.001"
+              max="1"
+              value="0.607"
+              step="0.001"
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="info">
+      <span id="fps">FPS: 0</span>
+      <span id="avgEnergy">Avg: 0.000</span>
+      <div class="speed-controls">
+        <span>Speed:</span>
+        <button class="speed-btn" data-speed="0">⏸</button>
+        <button class="speed-btn active" data-speed="1">▶</button>
+        <button class="speed-btn" data-speed="2">⏩</button>
+        <button class="speed-btn" data-speed="5">⏩⏩</button>
+      </div>
+    </div>
+
+    <div id="chart">
+      <canvas id="chartCanvas"></canvas>
+    </div>
+
+    <div class="interaction-mode">
+      <span>Click Mode:</span>
+      <button class="mode-btn active" data-mode="energy">Energy</button>
+      <button class="mode-btn" data-mode="attract">Attract</button>
+      <button class="mode-btn" data-mode="repel">Repel</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+      // Global variables
+      let scene, camera, renderer;
+      let computeRenderer;
+      let computeVariables = {};
+      let material;
+      let isPaused = false;
+      let speedMultiplier = 1;
+      let frameCount = 0;
+      let lastTime = performance.now();
+      let readbackBuffer;
+      let interactionTexture;
+      let interactionMode = "energy";
+      let isMouseDown = false;
+      let mousePos = { x: 0, y: 0 };
+
+      // Chart data
+      const chartHistory = [];
+      const maxHistoryLength = 100;
+      let chartCtx;
+
+      // Canvas dimensions
+      let canvasWidth = 800;
+      let canvasHeight = 600;
+
+      // Parameters
+      const params = {
+        innerRadius: 3.5,
+        innerStrength: 0.9,
+        outerRadius: 7.5,
+        outerStrength: -0.4,
+        growthCenter: -0.3,
+        growthWidth: 0.1,
+        growthRate: 0.487,
+        suppressionFactor: 1.0,
+        decayRate: 0.002,
+        diffusionRate: 0.005,
+        fissionThreshold: 0.8,
+        instabilityFactor: 1.5,
+      };
+
+      const SIMULATION_SIZE = 512;
+
+      function init() {
+        setupCanvas();
+        setupRenderer();
+        initComputeRenderer();
+        setupDisplay();
+        setupControls();
+        setupChart();
+        setupInteraction();
+        setupKeyboard();
+        setupResize();
+      }
+
+      function setupCanvas() {
+        const container = document.getElementById("canvasContainer");
+        container.style.width = canvasWidth + "px";
+        container.style.height = canvasHeight + "px";
+      }
+
+      function setupRenderer() {
+        scene = new THREE.Scene();
+        camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+        renderer = new THREE.WebGLRenderer({
+          canvas: document.getElementById("canvas"),
+          antialias: false,
+          preserveDrawingBuffer: true,
+        });
+        renderer.setSize(canvasWidth, canvasHeight);
+
+        readbackBuffer = new Float32Array(
+          SIMULATION_SIZE * SIMULATION_SIZE * 4
+        );
+      }
+
+      function initComputeRenderer() {
+        computeRenderer = new GPUComputationRenderer(
+          SIMULATION_SIZE,
+          SIMULATION_SIZE,
+          renderer
+        );
+
+        const initialTexture = computeRenderer.createTexture();
+        seedPattern(initialTexture);
+
+        interactionTexture = computeRenderer.createTexture();
+        clearTexture(interactionTexture);
+
+        const fieldVariable = computeRenderer.addVariable(
+          "field",
+          getLifecycleShader(),
+          initialTexture
+        );
+
+        fieldVariable.material.uniforms = {
+          innerRadius: { value: params.innerRadius },
+          innerStrength: { value: params.innerStrength },
+          outerRadius: { value: params.outerRadius },
+          outerStrength: { value: params.outerStrength },
+          growthCenter: { value: params.growthCenter },
+          growthWidth: { value: params.growthWidth },
+          growthRate: { value: params.growthRate },
+          suppressionFactor: { value: params.suppressionFactor },
+          globalAverage: { value: 0.0 },
+          decayRate: { value: params.decayRate },
+          diffusionRate: { value: params.diffusionRate },
+          fissionThreshold: { value: params.fissionThreshold },
+          instabilityFactor: { value: params.instabilityFactor },
+          interactionTexture: { value: interactionTexture },
+          texelSize: {
+            value: new THREE.Vector2(
+              1.0 / SIMULATION_SIZE,
+              1.0 / SIMULATION_SIZE
+            ),
+          },
+        };
+
+        computeRenderer.setVariableDependencies(fieldVariable, [fieldVariable]);
+        computeVariables.field = fieldVariable;
+
+        const error = computeRenderer.init();
+        if (error !== null) {
+          console.error(error);
+        }
+      }
+
+      function getLifecycleShader() {
+        return `
+                uniform sampler2D field;
+                uniform float innerRadius;
+                uniform float innerStrength;
+                uniform float outerRadius;
+                uniform float outerStrength;
+                uniform float growthCenter;
+                uniform float growthWidth;
+                uniform float growthRate;
+                uniform float suppressionFactor;
+                uniform float globalAverage;
+                uniform float decayRate;
+                uniform float diffusionRate;
+                uniform float fissionThreshold;
+                uniform float instabilityFactor;
+                uniform sampler2D interactionTexture;
+                uniform vec2 texelSize;
+                
+                float kernelWeight(float dist) {
+                    float weight = 0.0;
+                    
+                    if (dist < innerRadius) {
+                        float t = 1.0 - (dist / innerRadius);
+                        weight += innerStrength * t * t;
+                    }
+                    
+                    float ringStart = innerRadius + 1.0;
+                    float ringEnd = outerRadius;
+                    if (dist > ringStart && dist < ringEnd) {
+                        float t = (dist - ringStart) / (ringEnd - ringStart);
+                        weight += outerStrength * exp(-2.0 * t * t);
+                    }
+                    
+                    return weight;
+                }
+                
+                float growthFunction(float potential, float currentEnergy) {
+                    float x = (potential - growthCenter) / growthWidth;
+                    float bellCurve = exp(-x * x * 0.5);
+                    
+                    if (currentEnergy > fissionThreshold) {
+                        float excess = (currentEnergy - fissionThreshold) / (1.0 - fissionThreshold);
+                        bellCurve -= excess * instabilityFactor;
+                    }
+                    
+                    return bellCurve;
+                }
+                
+                float laplacian(vec2 uv) {
+                    float sum = 0.0;
+                    sum += texture2D(field, uv + vec2(-1.0, 0.0) * texelSize).x;
+                    sum += texture2D(field, uv + vec2(1.0, 0.0) * texelSize).x;
+                    sum += texture2D(field, uv + vec2(0.0, -1.0) * texelSize).x;
+                    sum += texture2D(field, uv + vec2(0.0, 1.0) * texelSize).x;
+                    sum -= 4.0 * texture2D(field, uv).x;
+                    return sum;
+                }
+                
+                void main() {
+                    vec2 uv = gl_FragCoord.xy * texelSize;
+                    
+                    float currentEnergy = texture2D(field, uv).x;
+                    vec3 interaction = texture2D(interactionTexture, uv).rgb;
+                    
+                    // Dynamic tension physics
+                    float potential = 0.0;
+                    float totalWeight = 0.0;
+                    
+                    int kernelSize = 10;
+                    for (int dy = -kernelSize; dy <= kernelSize; dy++) {
+                        for (int dx = -kernelSize; dx <= kernelSize; dx++) {
+                            vec2 offset = vec2(float(dx), float(dy));
+                            float dist = length(offset);
+                            
+                            if (dist <= outerRadius) {
+                                vec2 neighborUV = fract(uv + offset * texelSize);
+                                float neighborEnergy = texture2D(field, neighborUV).x;
+                                float weight = kernelWeight(dist);
+                                
+                                // Add interaction forces
+                                weight += interaction.g * 2.0 - interaction.b * 2.0;
+                                
+                                potential += neighborEnergy * weight;
+                                totalWeight += abs(weight);
+                            }
+                        }
+                    }
+                    
+                    if (totalWeight > 0.0) {
+                        potential /= totalWeight;
+                    }
+                    
+                    // Growth with instability
+                    float growth = growthFunction(potential, currentEnergy) - 0.5;
+                    growth -= globalAverage * suppressionFactor;
+                    
+                    // Metabolism
+                    float metabolism = currentEnergy * currentEnergy * decayRate;
+                    
+                    // Diffusion
+                    float diffusion = laplacian(uv) * diffusionRate;
+                    
+                    // Fission noise
+                    float fissionNoise = 0.0;
+                    if (currentEnergy > fissionThreshold) {
+                        float excess = (currentEnergy - fissionThreshold) / (1.0 - fissionThreshold);
+                        float chaos = sin(dot(uv * 100.0 + currentEnergy * 50.0, vec2(12.9898, 78.233)));
+                        fissionNoise = chaos * excess * 0.1;
+                    }
+                    
+                    // Mouse interaction energy
+                    float interactionEnergy = interaction.r * 0.1;
+                    
+                    // Update
+                    float deltaEnergy = growthRate * growth - metabolism + diffusion + fissionNoise + interactionEnergy;
+                    float newEnergy = currentEnergy + deltaEnergy;
+                    
+                    // Noise
+                    float noise = (fract(sin(dot(uv + currentEnergy, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * 0.001;
+                    newEnergy += noise;
+                    
+                    newEnergy = clamp(newEnergy, 0.0, 1.0);
+                    
+                    gl_FragColor = vec4(newEnergy, 0.0, 0.0, 1.0);
+                }
+            `;
+      }
+
+      function setupDisplay() {
+        const geometry = new THREE.PlaneGeometry(2, 2);
+        material = new THREE.ShaderMaterial({
+          uniforms: {
+            fieldTexture: { value: null },
+          },
+          vertexShader: `
+                    varying vec2 vUv;
+                    void main() {
+                        vUv = uv;
+                        gl_Position = vec4(position, 1.0);
+                    }
+                `,
+          fragmentShader: `
+                    uniform sampler2D fieldTexture;
+                    varying vec2 vUv;
+                    
+                    vec3 energyGradient(float energy) {
+                        vec3 color;
+                        
+                        if (energy < 0.1) {
+                            color = mix(vec3(0.0, 0.0, 0.0), vec3(0.0, 0.0, 0.2), energy * 10.0);
+                        } else if (energy < 0.3) {
+                            color = mix(vec3(0.0, 0.0, 0.2), vec3(0.0, 0.3, 0.8), (energy - 0.1) * 5.0);
+                        } else if (energy < 0.5) {
+                            color = mix(vec3(0.0, 0.3, 0.8), vec3(0.0, 0.8, 1.0), (energy - 0.3) * 5.0);
+                        } else if (energy < 0.7) {
+                            color = mix(vec3(0.0, 0.8, 1.0), vec3(0.2, 1.0, 0.3), (energy - 0.5) * 5.0);
+                        } else if (energy < 0.85) {
+                            color = mix(vec3(0.2, 1.0, 0.3), vec3(1.0, 1.0, 0.0), (energy - 0.7) * 6.67);
+                        } else {
+                            color = mix(vec3(1.0, 1.0, 0.0), vec3(1.0, 1.0, 1.0), (energy - 0.85) * 6.67);
+                            color += vec3(0.2) * sin(energy * 50.0);
+                        }
+                        
+                        color += energy * 0.15;
+                        
+                        return color;
+                    }
+                    
+                    void main() {
+                        float energy = texture2D(fieldTexture, vUv).x;
+                        vec3 color = energyGradient(energy);
+                        gl_FragColor = vec4(color, 1.0);
+                    }
+                `,
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        scene.add(mesh);
+      }
+
+      function setupControls() {
+        // Toggle controls
+        document
+          .getElementById("toggleControls")
+          .addEventListener("click", () => {
+            document.getElementById("controls").classList.toggle("collapsed");
+          });
+
+        // Parameter controls with wheel support
+        const paramControls = [
+          "innerRadius",
+          "innerStrength",
+          "outerRadius",
+          "outerStrength",
+          "growthCenter",
+          "growthWidth",
+          "growthRate",
+          "decayRate",
+          "diffusionRate",
+          "fissionThreshold",
+        ];
+
+        paramControls.forEach((param) => {
+          const slider = document.getElementById(param);
+          const input = document.getElementById(param + "Value");
+
+          // Sync slider and input
+          const updateValue = (value) => {
+            value = parseFloat(value);
+            params[param] = value;
+            slider.value = value;
+            input.value = value;
+
+            if (computeVariables.field) {
+              computeVariables.field.material.uniforms[param].value = value;
+            }
+          };
+
+          slider.addEventListener("input", (e) => updateValue(e.target.value));
+          input.addEventListener("input", (e) => updateValue(e.target.value));
+
+          // Mouse wheel on slider
+          slider.addEventListener("wheel", (e) => {
+            e.preventDefault();
+            const step = parseFloat(slider.step);
+            const delta = e.deltaY > 0 ? -step : step;
+            const newValue = Math.max(
+              slider.min,
+              Math.min(slider.max, parseFloat(slider.value) + delta * 10)
+            );
+            updateValue(newValue);
+          });
+        });
+
+        // Speed controls
+        document.querySelectorAll(".speed-btn").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            document
+              .querySelectorAll(".speed-btn")
+              .forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+            speedMultiplier = parseInt(btn.dataset.speed);
+            isPaused = speedMultiplier === 0;
+          });
+        });
+
+        // Interaction mode
+        document.querySelectorAll(".mode-btn").forEach((btn) => {
+          btn.addEventListener("click", () => {
+            document
+              .querySelectorAll(".mode-btn")
+              .forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+            interactionMode = btn.dataset.mode;
+          });
+        });
+
+        // Presets
+        document.getElementById("savePreset").addEventListener("click", () => {
+          const preset = JSON.stringify(params);
+          localStorage.setItem("energyLifePreset", preset);
+          alert("Preset saved!");
+        });
+
+        document.getElementById("loadPreset").addEventListener("click", () => {
+          const preset = localStorage.getItem("energyLifePreset");
+          if (preset) {
+            const loaded = JSON.parse(preset);
+            Object.keys(loaded).forEach((key) => {
+              if (params.hasOwnProperty(key)) {
+                params[key] = loaded[key];
+                const slider = document.getElementById(key);
+                const input = document.getElementById(key + "Value");
+                if (slider && input) {
+                  slider.value = loaded[key];
+                  input.value = loaded[key];
+                }
+                if (computeVariables.field) {
+                  computeVariables.field.material.uniforms[key].value =
+                    loaded[key];
+                }
+              }
+            });
+            alert("Preset loaded!");
+          }
+        });
+      }
+
+      function setupChart() {
+        const canvas = document.getElementById("chartCanvas");
+        chartCtx = canvas.getContext("2d");
+        canvas.width = 280;
+        canvas.height = 130;
+      }
+
+      function updateChart(avgEnergy) {
+        chartHistory.push(avgEnergy);
+        if (chartHistory.length > maxHistoryLength) {
+          chartHistory.shift();
+        }
+
+        const ctx = chartCtx;
+        const width = ctx.canvas.width;
+        const height = ctx.canvas.height;
+
+        ctx.fillStyle = "rgba(0, 0, 0, 0.1)";
+        ctx.fillRect(0, 0, width, height);
+
+        ctx.strokeStyle = "#00ffcc";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+
+        for (let i = 0; i < chartHistory.length; i++) {
+          const x = (i / maxHistoryLength) * width;
+          const y = height - chartHistory[i] * height;
+
+          if (i === 0) {
+            ctx.moveTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+
+        ctx.stroke();
+
+        // Grid
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i <= 4; i++) {
+          const y = (i / 4) * height;
+          ctx.beginPath();
+          ctx.moveTo(0, y);
+          ctx.lineTo(width, y);
+          ctx.stroke();
+        }
+      }
+
+      function setupInteraction() {
+        const canvas = document.getElementById("canvas");
+
+        canvas.addEventListener("mousedown", (e) => {
+          isMouseDown = true;
+          updateMousePos(e);
+        });
+
+        canvas.addEventListener("mousemove", (e) => {
+          if (isMouseDown) {
+            updateMousePos(e);
+          }
+        });
+
+        canvas.addEventListener("mouseup", () => {
+          isMouseDown = false;
+          clearTexture(interactionTexture);
+          updateInteractionTexture();
+        });
+
+        canvas.addEventListener("mouseleave", () => {
+          isMouseDown = false;
+          clearTexture(interactionTexture);
+          updateInteractionTexture();
+        });
+
+        function updateMousePos(e) {
+          const rect = canvas.getBoundingClientRect();
+          mousePos.x = (e.clientX - rect.left) / rect.width;
+          mousePos.y = 1.0 - (e.clientY - rect.top) / rect.height;
+        }
+      }
+
+      function updateInteractionTexture() {
+        if (isMouseDown) {
+          const data = interactionTexture.image.data;
+          const centerX = Math.floor(mousePos.x * SIMULATION_SIZE);
+          const centerY = Math.floor(mousePos.y * SIMULATION_SIZE);
+          const radius = 20;
+
+          for (let y = 0; y < SIMULATION_SIZE; y++) {
+            for (let x = 0; x < SIMULATION_SIZE; x++) {
+              const dx = x - centerX;
+              const dy = y - centerY;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+
+              if (dist < radius) {
+                const i = (y * SIMULATION_SIZE + x) * 4;
+                const intensity = 1.0 - dist / radius;
+
+                if (interactionMode === "energy") {
+                  data[i] = intensity;
+                } else if (interactionMode === "attract") {
+                  data[i + 1] = intensity;
+                } else if (interactionMode === "repel") {
+                  data[i + 2] = intensity;
+                }
+              }
+            }
+          }
+
+          interactionTexture.needsUpdate = true;
+        }
+
+        if (computeVariables.field) {
+          computeVariables.field.material.uniforms.interactionTexture.value =
+            interactionTexture;
+        }
+      }
+
+      function setupKeyboard() {
+        document.addEventListener("keydown", (e) => {
+          if (e.code === "Space") {
+            e.preventDefault();
+            isPaused = !isPaused;
+            const btn = document.querySelector(
+              `.speed-btn[data-speed="${isPaused ? 0 : 1}"]`
+            );
+            document
+              .querySelectorAll(".speed-btn")
+              .forEach((b) => b.classList.remove("active"));
+            btn.classList.add("active");
+            speedMultiplier = isPaused ? 0 : 1;
+          }
+        });
+      }
+
+      function setupResize() {
+        const container = document.getElementById("canvasContainer");
+        const handles = container.querySelectorAll(".resize-handle");
+
+        let isResizing = false;
+        let currentHandle = null;
+        let startX = 0;
+        let startY = 0;
+        let startWidth = 0;
+        let startHeight = 0;
+
+        handles.forEach((handle) => {
+          handle.addEventListener("mousedown", (e) => {
+            isResizing = true;
+            currentHandle = handle;
+            startX = e.clientX;
+            startY = e.clientY;
+            startWidth = canvasWidth;
+            startHeight = canvasHeight;
+            e.preventDefault();
+          });
+        });
+
+        document.addEventListener("mousemove", (e) => {
+          if (!isResizing) return;
+
+          const deltaX = e.clientX - startX;
+          const deltaY = e.clientY - startY;
+
+          if (currentHandle.classList.contains("right")) {
+            canvasWidth = Math.max(
+              400,
+              Math.min(window.innerWidth - 100, startWidth + deltaX)
+            );
+          } else if (currentHandle.classList.contains("bottom")) {
+            canvasHeight = Math.max(
+              300,
+              Math.min(window.innerHeight - 100, startHeight + deltaY)
+            );
+          } else if (currentHandle.classList.contains("corner")) {
+            canvasWidth = Math.max(
+              400,
+              Math.min(window.innerWidth - 100, startWidth + deltaX)
+            );
+            canvasHeight = Math.max(
+              300,
+              Math.min(window.innerHeight - 100, startHeight + deltaY)
+            );
+          }
+
+          container.style.width = canvasWidth + "px";
+          container.style.height = canvasHeight + "px";
+          renderer.setSize(canvasWidth, canvasHeight);
+        });
+
+        document.addEventListener("mouseup", () => {
+          isResizing = false;
+          currentHandle = null;
+        });
+      }
+
+      function seedPattern(texture) {
+        const data = texture.image.data;
+        for (let i = 0; i < data.length; i += 4) {
+          const value = Math.random() * 0.05;
+          data[i] = value;
+          data[i + 1] = 0;
+          data[i + 2] = 0;
+          data[i + 3] = 1;
+        }
+      }
+
+      function clearTexture(texture) {
+        const data = texture.image.data;
+        for (let i = 0; i < data.length; i += 4) {
+          data[i] = 0;
+          data[i + 1] = 0;
+          data[i + 2] = 0;
+          data[i + 3] = 1;
+        }
+      }
+
+      function animate() {
+        requestAnimationFrame(animate);
+
+        if (!isPaused && speedMultiplier > 0) {
+          for (let i = 0; i < speedMultiplier; i++) {
+            computeRenderer.compute();
+          }
+
+          updateInteractionTexture();
+
+          // Read statistics
+          const currentRenderTarget = computeRenderer.getCurrentRenderTarget(
+            computeVariables.field
+          );
+          renderer.readRenderTargetPixels(
+            currentRenderTarget,
+            0,
+            0,
+            SIMULATION_SIZE,
+            SIMULATION_SIZE,
+            readbackBuffer
+          );
+
+          let sum = 0;
+          const count = SIMULATION_SIZE * SIMULATION_SIZE;
+          for (let i = 0; i < readbackBuffer.length; i += 4) {
+            sum += readbackBuffer[i];
+          }
+          const average = sum / count;
+
+          computeVariables.field.material.uniforms.globalAverage.value =
+            average;
+
+          document.getElementById(
+            "avgEnergy"
+          ).textContent = `Avg: ${average.toFixed(3)}`;
+          updateChart(average);
+
+          material.uniforms.fieldTexture.value = currentRenderTarget.texture;
+        }
+
+        renderer.render(scene, camera);
+
+        // Update FPS
+        frameCount++;
+        const currentTime = performance.now();
+        if (currentTime - lastTime > 1000) {
+          const fps = (frameCount * 1000) / (currentTime - lastTime);
+          document.getElementById("fps").textContent = `FPS: ${fps.toFixed(1)}`;
+          frameCount = 0;
+          lastTime = currentTime;
+        }
+      }
+
+      // GPUComputationRenderer implementation (same as before)
+      function GPUComputationRenderer(sizeX, sizeY, renderer) {
+        this.sizeX = sizeX;
+        this.sizeY = sizeY;
+        this.renderer = renderer;
+        this.passThruShader = createPassThroughShader();
+        this.variables = [];
+        this.currentTextureIndex = 0;
+
+        this.scene = new THREE.Scene();
+        this.camera = new THREE.Camera();
+        this.camera.position.z = 1;
+
+        this.passThruUniforms = {
+          passTexture: { value: null },
+        };
+
+        this.mesh = new THREE.Mesh(
+          new THREE.PlaneGeometry(2, 2),
+          this.passThruShader
+        );
+        this.scene.add(this.mesh);
+
+        this.createTexture = function () {
+          const data = new Float32Array(sizeX * sizeY * 4);
+          const texture = new THREE.DataTexture(
+            data,
+            sizeX,
+            sizeY,
+            THREE.RGBAFormat,
+            THREE.FloatType
+          );
+          texture.needsUpdate = true;
+          texture.minFilter = THREE.NearestFilter;
+          texture.magFilter = THREE.NearestFilter;
+          texture.wrapS = THREE.RepeatWrapping;
+          texture.wrapT = THREE.RepeatWrapping;
+          return texture;
+        };
+
+        this.addVariable = function (
+          variableName,
+          fragmentShader,
+          initialTexture
+        ) {
+          const material = new THREE.ShaderMaterial({
+            fragmentShader: fragmentShader,
+            vertexShader: getPassThroughVertexShader(),
+          });
+
+          const variable = {
+            name: variableName,
+            renderTargets: [],
+            material: material,
+            dependencies: [],
+          };
+
+          for (let i = 0; i < 2; i++) {
+            const renderTarget = new THREE.WebGLRenderTarget(sizeX, sizeY, {
+              minFilter: THREE.NearestFilter,
+              magFilter: THREE.NearestFilter,
+              format: THREE.RGBAFormat,
+              type: THREE.FloatType,
+              wrapS: THREE.RepeatWrapping,
+              wrapT: THREE.RepeatWrapping,
+            });
+            variable.renderTargets.push(renderTarget);
+          }
+
+          this.renderTexture(initialTexture, variable.renderTargets[0]);
+          this.renderTexture(initialTexture, variable.renderTargets[1]);
+
+          this.variables.push(variable);
+          return variable;
+        };
+
+        this.setVariableDependencies = function (variable, dependencies) {
+          variable.dependencies = dependencies;
+        };
+
+        this.init = function () {
+          return null;
+        };
+
+        this.compute = function () {
+          const currentTextureIndex = this.currentTextureIndex;
+          const nextTextureIndex = (currentTextureIndex + 1) % 2;
+
+          for (let v = 0; v < this.variables.length; v++) {
+            const variable = this.variables[v];
+
+            for (let d = 0; d < variable.dependencies.length; d++) {
+              const dependency = variable.dependencies[d];
+              const name = dependency.name;
+              variable.material.uniforms[name] = {
+                value: dependency.renderTargets[currentTextureIndex].texture,
+              };
+            }
+
+            this.mesh.material = variable.material;
+            this.renderer.setRenderTarget(
+              variable.renderTargets[nextTextureIndex]
+            );
+            this.renderer.render(this.scene, this.camera);
+          }
+
+          this.renderer.setRenderTarget(null);
+          this.currentTextureIndex = nextTextureIndex;
+        };
+
+        this.getCurrentRenderTarget = function (variable) {
+          return variable.renderTargets[this.currentTextureIndex];
+        };
+
+        this.renderTexture = function (texture, renderTarget) {
+          this.passThruUniforms.passTexture.value = texture;
+          this.mesh.material = this.passThruShader;
+          this.renderer.setRenderTarget(renderTarget);
+          this.renderer.render(this.scene, this.camera);
+          this.renderer.setRenderTarget(null);
+        };
+
+        function createPassThroughShader() {
+          return new THREE.ShaderMaterial({
+            uniforms: {
+              passTexture: { value: null },
+            },
+            vertexShader: getPassThroughVertexShader(),
+            fragmentShader: getPassThroughFragmentShader(),
+          });
+        }
+
+        function getPassThroughVertexShader() {
+          return `
+                    void main() {
+                        gl_Position = vec4(position, 1.0);
+                    }
+                `;
+        }
+
+        function getPassThroughFragmentShader() {
+          return `
+                    uniform sampler2D passTexture;
+                    void main() {
+                        vec2 uv = gl_FragCoord.xy / vec2(${sizeX}.0, ${sizeY}.0);
+                        gl_FragColor = texture2D(passTexture, uv);
+                    }
+                `;
+        }
+      }
+
+      // Start
+      init();
+      animate();
+    </script>
+  </body>
+</html>
