@@ -1,4 +1,10 @@
-import { EnergyLifeSimulation } from './app.js';
+/**
+ * Main Entry Point
+ *
+ * Initializes the Energy Life Simulation when DOM is ready.
+ */
+
+import { EnergyLifeSimulation } from './core/EnergyLifeSimulation.js';
 
 window.addEventListener('DOMContentLoaded', () => {
   const simulation = new EnergyLifeSimulation({
@@ -9,5 +15,7 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   simulation.init();
+
+  // Expose to window for debugging/testing
   window.energyLifeSim = simulation;
 });

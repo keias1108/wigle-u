@@ -1,6 +1,23 @@
+/**
+ * GPU Computation Renderer
+ *
+ * Implements General-Purpose GPU (GPGPU) computation using WebGL.
+ * Uses ping-pong rendering between two textures to simulate iterative updates.
+ *
+ * Based on THREE.js GPUComputationRenderer pattern.
+ * @class
+ */
+
 const THREE = window.THREE;
 
 export class GPUComputationRenderer {
+  /**
+   * Creates a GPU computation renderer
+   *
+   * @param {number} sizeX - Width of computation texture
+   * @param {number} sizeY - Height of computation texture
+   * @param {THREE.WebGLRenderer} renderer - Three.js WebGL renderer
+   */
   constructor(sizeX, sizeY, renderer) {
     this.sizeX = sizeX;
     this.sizeY = sizeY;
@@ -25,6 +42,11 @@ export class GPUComputationRenderer {
     this.scene.add(this.mesh);
   }
 
+  /**
+   * Creates a floating-point data texture for GPU computation
+   *
+   * @returns {THREE.DataTexture} Float texture initialized to zero
+   */
   createTexture() {
     const data = new Float32Array(this.sizeX * this.sizeY * 4);
     const texture = new THREE.DataTexture(
@@ -42,6 +64,16 @@ export class GPUComputationRenderer {
     return texture;
   }
 
+  /**
+   * Adds a computation variable (shader + render targets)
+   *
+   * Creates ping-pong render targets for double buffering.
+   *
+   * @param {string} variableName - Uniform name for the variable
+   * @param {string} fragmentShader - GLSL fragment shader code
+   * @param {THREE.DataTexture} initialTexture - Initial state texture
+   * @returns {Object} Variable object with material and render targets
+   */
   addVariable(variableName, fragmentShader, initialTexture) {
     const material = new THREE.ShaderMaterial({
       fragmentShader,
@@ -55,6 +87,7 @@ export class GPUComputationRenderer {
       dependencies: [],
     };
 
+    // Create two render targets for ping-pong rendering
     for (let i = 0; i < 2; i++) {
       const renderTarget = new THREE.WebGLRenderTarget(this.sizeX, this.sizeY, {
         minFilter: THREE.NearestFilter,
@@ -67,6 +100,7 @@ export class GPUComputationRenderer {
       variable.renderTargets.push(renderTarget);
     }
 
+    // Initialize both buffers
     this.renderTexture(initialTexture, variable.renderTargets[0]);
     this.renderTexture(initialTexture, variable.renderTargets[1]);
 
@@ -74,14 +108,34 @@ export class GPUComputationRenderer {
     return variable;
   }
 
+  /**
+   * Sets dependencies for a variable
+   *
+   * Dependencies are other variables whose textures will be
+   * bound as uniforms in this variable's shader.
+   *
+   * @param {Object} variable - The variable to configure
+   * @param {Array<Object>} dependencies - Array of dependent variables
+   */
   setVariableDependencies(variable, dependencies) {
     variable.dependencies = dependencies;
   }
 
+  /**
+   * Initializes the computation renderer
+   *
+   * @returns {null} Returns null on success (for compatibility)
+   */
   init() {
     return null;
   }
 
+  /**
+   * Performs one computation step
+   *
+   * Executes all variable shaders, ping-ponging between buffers.
+   * Reads from current buffer, writes to next buffer, then swaps.
+   */
   compute() {
     const currentTextureIndex = this.currentTextureIndex;
     const nextTextureIndex = (currentTextureIndex + 1) % 2;
@@ -89,6 +143,7 @@ export class GPUComputationRenderer {
     for (let i = 0; i < this.variables.length; i++) {
       const variable = this.variables[i];
 
+      // Bind dependencies as uniforms
       for (let d = 0; d < variable.dependencies.length; d++) {
         const dependency = variable.dependencies[d];
         const name = dependency.name;
@@ -97,6 +152,7 @@ export class GPUComputationRenderer {
         };
       }
 
+      // Execute shader: read from current, write to next
       this.mesh.material = variable.material;
       this.renderer.setRenderTarget(variable.renderTargets[nextTextureIndex]);
       this.renderer.render(this.scene, this.camera);
@@ -106,10 +162,24 @@ export class GPUComputationRenderer {
     this.currentTextureIndex = nextTextureIndex;
   }
 
+  /**
+   * Gets the current (most recent) render target for a variable
+   *
+   * @param {Object} variable - The variable
+   * @returns {THREE.WebGLRenderTarget} Current render target
+   */
   getCurrentRenderTarget(variable) {
     return variable.renderTargets[this.currentTextureIndex];
   }
 
+  /**
+   * Renders a texture to a render target
+   *
+   * Used for initializing buffers.
+   *
+   * @param {THREE.Texture} texture - Source texture
+   * @param {THREE.WebGLRenderTarget} renderTarget - Destination render target
+   */
   renderTexture(texture, renderTarget) {
     this.passThruUniforms.passTexture.value = texture;
     this.mesh.material = this.passThruShader;
@@ -118,6 +188,11 @@ export class GPUComputationRenderer {
     this.renderer.setRenderTarget(null);
   }
 
+  /**
+   * Creates the passthrough shader material
+   * @private
+   * @returns {THREE.ShaderMaterial} Passthrough shader material
+   */
   #createPassThroughShader() {
     return new THREE.ShaderMaterial({
       uniforms: this.passThruUniforms,
@@ -126,6 +201,11 @@ export class GPUComputationRenderer {
     });
   }
 
+  /**
+   * Returns passthrough vertex shader
+   * @private
+   * @returns {string} GLSL vertex shader code
+   */
   #getPassThroughVertexShader() {
     return `
                     void main() {
@@ -134,6 +214,11 @@ export class GPUComputationRenderer {
                 `;
   }
 
+  /**
+   * Returns passthrough fragment shader
+   * @private
+   * @returns {string} GLSL fragment shader code
+   */
   #getPassThroughFragmentShader() {
     return `
                     uniform sampler2D passTexture;
@@ -142,5 +227,35 @@ export class GPUComputationRenderer {
                         gl_FragColor = texture2D(passTexture, uv);
                     }
                 `;
+  }
+
+  /**
+   * Disposes of all GPU resources
+   *
+   * Cleans up render targets, materials, and textures to free GPU memory.
+   */
+  dispose() {
+    // Dispose all variable render targets and materials
+    for (let i = 0; i < this.variables.length; i++) {
+      const variable = this.variables[i];
+
+      // Dispose render targets
+      for (let j = 0; j < variable.renderTargets.length; j++) {
+        variable.renderTargets[j].dispose();
+      }
+
+      // Dispose material
+      if (variable.material) {
+        variable.material.dispose();
+      }
+    }
+
+    // Dispose passthrough shader
+    if (this.passThruShader) {
+      this.passThruShader.dispose();
+    }
+
+    // Clear variables array
+    this.variables = [];
   }
 }
